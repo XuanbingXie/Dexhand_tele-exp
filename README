@@ -1,0 +1,60 @@
+USB:FTDI FT232R USB UART
+
+##camera id
+#camera right
+Device Serial No: 250122072156
+#camera left
+Device Serial No: 250122077547
+
+# RealMan右臂
+IP = 192.168.1.28
+# RealMan左臂
+IP = 192.168.1.18
+
+
+conda activate foundationpose
+
+## foundationpose相关 ##
+python run_demo_xxb.py --mesh_file demo_data/xxbdata/mesh/r=20.obj
+
+步骤：首先框选物体，最后按`enter` 键完成框选
+注意：物体需要暴露在realsense的全部视线范围内
+
+## RealMan相关 ##
+python RM_API2/RealMan/realman.py
+
+## 灵巧手相关 ##
+# 开启can端口
+bash linker_hand_python_sdk/find_can.sh
+sudo /usr/sbin/ip link set can0 up type can bitrate 1000000
+python linker_hand_python_sdk/example/gui_control/gui_control.py
+# 测试灵巧手
+python3 linker_hand_python_sdk/example/L10/gesture/linker_hand_finger_bend.py --hand_type right --hand_joint L10 --can=can1
+
+# 灵巧手eye-in-hand变换矩阵
+# 手眼标定的结果保存成 T_ee_cam（末端→相机）
+python utils/Gen_T.py
+
+# 整个流程
+python grasp_foundationpose_eye_in_hand.py --mesh_file FoundationPose/demo_data/xxbdata/mesh/r=15.obj --hand_eye hand_eye.json
+
+
+# 右手手眼标定矩阵
+parameters:
+  eye_on_hand: true
+  freehand_robot_movement: false
+  move_group: right_arm
+  move_group_namespace: /
+  namespace: /rm_realsense_eye_on_hand/
+  robot_base_frame: right_arm_link
+  robot_effector_frame: right_Link6
+  tracking_base_frame: camera_link
+  tracking_marker_frame: aruco_marker_frame
+transformation:
+  qw: 0.7075128755233238
+  qx: -0.009126964243243852
+  qy: -0.7065374125941396
+  qz: -0.012129060029487711
+  x: -0.07327501200061995
+  y: 0.018787676152570057
+  z: 0.02202841364679301

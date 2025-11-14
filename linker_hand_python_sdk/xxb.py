@@ -1,0 +1,24 @@
+from LinkerHand.linker_hand_api import LinkerHandApi
+def main():
+    # 初始化API hand_type:left or right   hand_joint:L7 or L10 or L20 or L25
+    linker_hand = LinkerHandApi(hand_type="right", hand_joint="L10")
+    # 设置手指速度
+    linker_hand.set_speed(speed=[120,200,200,200,200])
+    # 设置手扭矩
+    linker_hand.set_torque(torque=[200,200,200,200,200])
+
+    #大拇指弯曲#大拇指侧摆#食指弯曲#中指弯曲#无名指弯曲#小指弯曲#食指侧摆#无名指侧摆#小指侧摆#拇指旋转
+    # pose = [255, 255, 255, 255, 255, 255, 0, 0, 0, 0]
+    # linker_hand.finger_move(pose=pose)
+    pose = [148, 126, 148, 140, 148, 255, 84, 20, 0, 178]
+    linker_hand.finger_move(pose=pose)
+
+    # force
+    hand_force = linker_hand.get_torque()
+    print(hand_force)
+    tem = linker_hand.get_temperature()
+    print(tem)
+    
+
+if __name__ == "__main__":
+    main()
