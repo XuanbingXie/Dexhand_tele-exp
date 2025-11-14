@@ -122,7 +122,11 @@ def detect_pose_with_foundationpose(mesh_file: str, debug_dir: str = "fp_debug")
                 cv2.imshow("FoundationPose", vis[..., ::-1])
                 cv2.waitKey(500)
                 cv2.destroyAllWindows()
-                return pose, {"K": K, "depth_scale": depth_scale}
+                return pose, {
+                    "K": K,
+                    "depth_scale": depth_scale,
+                    "mesh_to_center": np.linalg.inv(to_origin),
+                }
     finally:
         pipeline.stop()
         cv2.destroyAllWindows()
@@ -188,8 +192,9 @@ def main():
     robot.movel(point, v = 40)
     hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
 
-    pose_cam_obj, _ = detect_pose_with_foundationpose(args.mesh_file, debug_dir=os.path.join(ROOT_DIR, "fp_debug"))
-    T_cam_obj = pose_cam_obj
+    pose_cam_obj, info = detect_pose_with_foundationpose(args.mesh_file, debug_dir=os.path.join(ROOT_DIR, "fp_debug"))
+    mesh_to_center = info.get("mesh_to_center", np.eye(4, dtype=np.float64))
+    T_cam_obj = pose_cam_obj @ mesh_to_center
 
     current_pose = robot.get_current_pose()
     x, y, z, rx, ry, rz = current_pose
@@ -254,8 +259,7 @@ def main():
     import pdb; pdb.set_trace()
     robot.movel(pose_pregrasp, v=25)
     import pdb; pdb.set_trace()
-    pose = [148, 126, 148, 140, 148, 255, 84, 20, 0, 178]
-    hand.finger_move(pose)
+    hand.finger_move([103, 53, 160, 143, 135, 131, 255, 255, 255, 255])
     # robot.movel(pose_pregrasp, v=10)
 
     robot.disconnect()
