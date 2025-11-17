@@ -15,7 +15,7 @@ IP = 192.168.1.18
 conda activate foundationpose
 
 ## foundationpose相关 ##
-python run_demo_xxb.py --mesh_file demo_data/xxbdata/mesh/r=20.obj
+python FoundationPose/run_demo_xxb.py --mesh_file FoundationPose/demo_data/xxbdata/mesh/r=15.obj
 
 步骤：首先框选物体，最后按`enter` 键完成框选
 注意：物体需要暴露在realsense的全部视线范围内
