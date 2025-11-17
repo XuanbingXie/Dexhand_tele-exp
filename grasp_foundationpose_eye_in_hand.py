@@ -85,11 +85,14 @@ def get_mask_from_user(color: np.ndarray, depth: np.ndarray) -> np.ndarray:
     return combined
 
 
-def detect_pose_with_foundationpose(mesh_file: str, debug_dir: str = "fp_debug") -> Tuple[np.ndarray, dict]:
+def detect_pose_with_foundationpose(mesh_file: str, debug_dir: str = "fp_debug", use_centroid: bool = False) -> Tuple[np.ndarray, dict]:
     """
     Returns:
       pose_cam_obj (4x4): object pose in camera frame (T_cam_obj)
       calib: dict with K and other info
+      
+    Args:
+      use_centroid: If True, use mesh centroid as grasp point instead of OBB center
     """
     code_dir = os.path.join(ROOT_DIR, "FoundationPose")
     os.makedirs(debug_dir, exist_ok=True)
@@ -136,10 +139,21 @@ def detect_pose_with_foundationpose(mesh_file: str, debug_dir: str = "fp_debug")
                 continue
             pose = est.register(K=K, rgb=color, depth=depth, ob_mask=mask, iteration=5)
             if pose is not None:
-                # Optional visualization
+                # Calculate grasp center
+                if use_centroid:
+                    # Use mesh centroid (center of mass)
+                    center_offset = mesh.centroid
+                    mesh_to_center = np.eye(4, dtype=np.float64)
+                    mesh_to_center[:3, 3] = center_offset
+                else:
+                    # Use OBB center (original behavior)
+                    to_origin, extents = trimesh.bounds.oriented_bounds(mesh)
+                    mesh_to_center = np.linalg.inv(to_origin)
+                
+                # Visualization
                 to_origin, extents = trimesh.bounds.oriented_bounds(mesh)
                 bbox = np.stack([-extents / 2, extents / 2], axis=0).reshape(2, 3)
-                center_pose = pose @ np.linalg.inv(to_origin)
+                center_pose = pose @ mesh_to_center
                 vis = draw_posed_3d_box(K, img=color, ob_in_cam=center_pose, bbox=bbox)
                 vis = draw_xyz_axis(vis, ob_in_cam=center_pose, scale=0.1, K=K, thickness=3, transparency=0, is_input_rgb=True)
                 cv2.imshow("FoundationPose", vis[..., ::-1])
@@ -148,7 +162,7 @@ def detect_pose_with_foundationpose(mesh_file: str, debug_dir: str = "fp_debug")
                 return pose, {
                     "K": K,
                     "depth_scale": depth_scale,
-                    "mesh_to_center": np.linalg.inv(to_origin),
+                    "mesh_to_center": mesh_to_center,
                 }
     finally:
         pipeline.stop()
@@ -216,7 +230,7 @@ def main():
     hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
     import pdb; pdb.set_trace()
 
-    pose_cam_obj, info = detect_pose_with_foundationpose(args.mesh_file, debug_dir=os.path.join(ROOT_DIR, "fp_debug"))
+    pose_cam_obj, info = detect_pose_with_foundationpose(args.mesh_file, debug_dir=os.path.join(ROOT_DIR, "fp_debug"), use_centroid=args.use_centroid)
     mesh_to_center = info.get("mesh_to_center", np.eye(4, dtype=np.float64))
     T_cam_obj = pose_cam_obj @ mesh_to_center
 
@@ -237,32 +251,22 @@ def main():
 
     T_ee_cam = load_hand_eye_transform(args.hand_eye)
     
-    # Step 1: Convert camera coordinate system to RM coordinate system
-    T_rm_cam = get_camera_to_rm_transform()
-    
-    # Step 2: Convert T_cam_obj from OpenCV camera frame to RM camera frame
-    T_cam_obj_rm = T_rm_cam @ T_cam_obj
-    
-    # Step 3: Convert T_ee_cam to RM frame
-    T_ee_cam_rm = T_rm_cam @ T_ee_cam
-    
-    # Step 4: Compute object pose in base frame (绝对位置)
-    T_cam_ee_rm = np.linalg.inv(T_ee_cam_rm)
-    T_ee_obj = T_cam_ee_rm @ T_cam_obj_rm
-    T_base_obj = T_base_ee @ T_ee_obj
+    # Compute object pose in base frame using standard transformation chain
+    # T_base_obj = T_base_ee @ T_ee_cam @ T_cam_obj
+    T_base_obj = T_base_ee @ T_ee_cam @ T_cam_obj
 
     # 5) Define grasp strategy: move to pre-grasp above object, then to grasp position
     R_base_tool = R_base_ee
     p_obj = T_base_obj[:3, 3]
 
-    # RM坐标系：X前，Y左，Z上，所以"上方"是+Z方向
-    p_pregrasp = p_obj + np.array([0, 0, args.pregrasp_height])  # 沿Z轴向上
+    # Apply X/Y offset compensation (in RM frame: X=forward, Y=left, Z=up)
+    p_obj_adjusted = p_obj + np.array([args.grasp_offset_x, args.grasp_offset_y, 0])
     
     # Grasp pose: at object position (or with small offset if needed)
-    p_grasp = p_obj + np.array([0, 0, args.grasp_offset])  # 可以沿Z轴微调
+    p_grasp = p_obj_adjusted + np.array([0, 0, args.grasp_offset])  # 可以沿Z轴微调
 
     rx_cmd, ry_cmd, rz_cmd = rmat_to_rvec_zyx(R_base_tool)
-    pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1])+0.02, -0.145, rx_cmd, ry_cmd, rz_cmd]
+    pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), float(p_pregrasp[2]), rx_cmd, ry_cmd, rz_cmd]
     pose_grasp = [float(p_grasp[0]), float(p_grasp[1]), float(p_grasp[2]), rx_cmd, ry_cmd, rz_cmd]
 
     # 6) Execute motion and grasp
