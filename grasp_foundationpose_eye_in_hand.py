@@ -51,15 +51,38 @@ def get_mask_from_user(color: np.ndarray, depth: np.ndarray) -> np.ndarray:
     cv2.destroyWindow("Select Object (ENTER)")
     mask = np.zeros((color.shape[0], color.shape[1]), dtype=bool)
     x, y, w, h = [int(v) for v in roi]
-    if w > 0 and h > 0:
-        mask[y : y + h, x : x + w] = True
-        depth_roi = depth[y : y + h, x : x + w]
-        valid_depth = depth_roi[depth_roi > 0]
-        if len(valid_depth) > 0:
-            depth_mean = np.median(valid_depth)
-            depth_threshold = 0.15
-            mask = mask & (np.abs(depth - depth_mean) < depth_threshold) & (depth > 0)
-    return mask
+    if w <= 0 or h <= 0:
+        return mask
+
+    mask[y : y + h, x : x + w] = True
+
+    depth_roi = depth[y : y + h, x : x + w]
+    valid_depth = depth_roi[depth_roi > 0]
+    if len(valid_depth) > 0:
+        depth_mean = np.median(valid_depth)
+        depth_threshold = 0.08  # 原来 0.15，缩小以更好区分物体与桌面
+        depth_mask = (np.abs(depth - depth_mean) < depth_threshold) & (depth > 0)
+    else:
+        depth_mask = depth > 0
+
+    gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
+    gray_roi = gray[y : y + h, x : x + w]
+
+    roi_mean = float(np.mean(gray_roi))
+    roi_std = float(np.std(gray_roi))
+
+    k = 0.8
+    intensity_thresh = roi_mean - k * roi_std
+    intensity_thresh = max(20.0, min(220.0, intensity_thresh))
+
+    intensity_mask = gray < intensity_thresh
+
+    combined = mask & depth_mask & intensity_mask
+
+    if combined.sum() < 50:
+        combined = mask & depth_mask
+
+    return combined
 
 
 def detect_pose_with_foundationpose(mesh_file: str, debug_dir: str = "fp_debug") -> Tuple[np.ndarray, dict]:
@@ -214,26 +237,15 @@ def main():
     T_ee_cam = load_hand_eye_transform(args.hand_eye)
     
     # Step 1: Convert camera coordinate system to RM coordinate system
-    # T_rm_cam: transforms points from OpenCV camera frame to RM frame
     T_rm_cam = get_camera_to_rm_transform()
     
     # Step 2: Convert T_cam_obj from OpenCV camera frame to RM camera frame
-    # T_cam_obj transforms: point_in_obj -> point_in_cam (OpenCV)
-    # We need: point_in_obj -> point_in_cam (RM frame)
-    # T_cam_obj_rm = T_rm_cam @ T_cam_obj transforms: point_in_obj -> point_in_cam (RM)
     T_cam_obj_rm = T_rm_cam @ T_cam_obj
     
     # Step 3: Convert T_ee_cam to RM frame
-    # T_ee_cam transforms: point_in_ee (RM) -> point_in_cam (OpenCV)
-    # We need: point_in_ee (RM) -> point_in_cam (RM)
-    # T_ee_cam_rm = T_rm_cam @ T_ee_cam transforms: point_in_ee (RM) -> point_in_cam (RM)
     T_ee_cam_rm = T_rm_cam @ T_ee_cam
     
     # Step 4: Compute object pose in base frame (绝对位置)
-    # 转换链：物体(相机RM) -> 物体(末端RM) -> 物体(基座RM)
-    # T_cam_ee_rm = inv(T_ee_cam_rm): transforms from camera (RM) to end-effector (RM)
-    # T_ee_obj = T_cam_ee_rm @ T_cam_obj_rm: 物体在末端坐标系（RM）
-    # T_base_obj = T_base_ee @ T_ee_obj: 物体在基座坐标系（RM，绝对位置）
     T_cam_ee_rm = np.linalg.inv(T_ee_cam_rm)
     T_ee_obj = T_cam_ee_rm @ T_cam_obj_rm
     T_base_obj = T_base_ee @ T_ee_obj
