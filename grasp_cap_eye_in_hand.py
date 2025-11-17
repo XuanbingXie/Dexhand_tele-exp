@@ -149,16 +149,13 @@ def get_camera_to_rm_transform() -> np.ndarray:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hand_eye", type=str, required=True)
-    parser.add_argument("--pregrasp_height", type=float, default=0.02)
-    parser.add_argument("--grasp_offset", type=float, default=0.0)
-    parser.add_argument("--hand_speed", type=int, default=120)
     args = parser.parse_args()
 
     robot = RobotArmController("192.168.1.28", 8080, 3)
     hand = LinkerHandApi(hand_type="right", hand_joint="L10")
-    hand.set_speed(speed=[args.hand_speed, 200, 200, 200, 200])
+    hand.set_speed(speed=[120, 200, 200, 200, 200])
 
-    home_pose = [0.55, -0.12, -0.03, 3.0, -1.1, 0.9]
+    home_pose = [0.55,-0.067,0.125,3.073,-1.138,0.768]
     robot.movel(home_pose, v=40)
     hand.finger_move([255] * 10)
 
@@ -190,15 +187,15 @@ def main():
     T_base_obj = T_base_ee @ T_ee_obj
 
     p_obj = T_base_obj[:3, 3]
-    p_pregrasp = p_obj + np.array([0, 0, args.pregrasp_height])
-    p_grasp = p_obj + np.array([0, 0, args.grasp_offset])
+    p_pregrasp = p_obj 
 
     rx_cmd, ry_cmd, rz_cmd = rmat_to_rvec_zyx(R_base_ee)
-    pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), float(p_pregrasp[2]), rx_cmd, ry_cmd, rz_cmd]
-    pose_grasp = [float(p_grasp[0]), float(p_grasp[1]), float(p_grasp[2]), rx_cmd, ry_cmd, rz_cmd]
-
-    robot.movel(pose_pregrasp, v=25)
-    robot.movel(pose_grasp, v=10)
+    pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), 0.125, rx_cmd, ry_cmd, rz_cmd]
+   
+    print("Pregrasp Pose:", pose_pregrasp)
+    import pdb; pdb.set_trace()
+    robot.movel(pose_pregrasp, v=15)
+    import pdb; pdb.set_trace()
     hand.finger_move([103, 53, 160, 143, 135, 131, 255, 255, 255, 255])
     robot.movel(pose_pregrasp, v=25)
 

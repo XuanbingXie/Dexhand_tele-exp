@@ -37,7 +37,7 @@ python utils/Gen_T.py
 
 # 整个流程
 python grasp_foundationpose_eye_in_hand.py --mesh_file FoundationPose/demo_data/xxbdata/mesh/r=15.obj --hand_eye hand_eye.json
-
+python grasp_cap_eye_in_hand.py --hand_eye hand_eye.json
 
 # 右手手眼标定矩阵
 parameters:
