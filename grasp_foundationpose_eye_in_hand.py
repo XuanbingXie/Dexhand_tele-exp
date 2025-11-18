@@ -241,7 +241,7 @@ def main():
     hand = LinkerHandApi(hand_type="right", hand_joint="L10")
     hand.set_speed(speed=[120,200,200,200,200])
 
-    point = [0.50092,-0.143599,-0.026616,-3.048,-1.154,0.639]
+    point = [0.473533,-0.145475,-0.028986,-3.058,-0.717,0.629]
     robot.movel(point, v = 20)
     hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
     import pdb; pdb.set_trace()
@@ -297,7 +297,7 @@ def main():
     p_grasp = p_obj + np.array([0, 0, args.grasp_offset])  # 可以沿Z轴微调
 
     rx_cmd, ry_cmd, rz_cmd = rmat_to_rvec_zyx(R_base_tool)
-    pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), float(p_pregrasp[2]), rx_cmd, ry_cmd, rz_cmd]
+    pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), -0.14, rx_cmd, ry_cmd, rz_cmd]
     pose_grasp = [float(p_grasp[0]), float(p_grasp[1]), float(p_grasp[2]), rx_cmd, ry_cmd, rz_cmd]
 
     # 6) Execute motion and grasp
