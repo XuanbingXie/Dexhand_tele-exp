@@ -251,19 +251,23 @@ def main():
 
     T_ee_cam = load_hand_eye_transform(args.hand_eye)
     
-    # Compute object pose in base frame using standard transformation chain
-    # T_base_obj = T_base_ee @ T_ee_cam @ T_cam_obj
-    T_base_obj = T_base_ee @ T_ee_cam @ T_cam_obj
+    # Compute object pose in base frame with coordinate system conversion
+    # 由于手眼标定是在 OpenCV 坐标系下做的，需要转换到 RM 坐标系
+    # OpenCV: X右, Y下, Z前  →  RM: X前, Y左, Z上
+    T_rm_cam = get_camera_to_rm_transform()
+    T_cam_obj_rm = T_rm_cam @ T_cam_obj
+    T_ee_cam_rm = T_rm_cam @ T_ee_cam
+    T_cam_ee_rm = np.linalg.inv(T_ee_cam_rm)
+    T_ee_obj = T_cam_ee_rm @ T_cam_obj_rm
+    T_base_obj = T_base_ee @ T_ee_obj
 
     # 5) Define grasp strategy: move to pre-grasp above object, then to grasp position
     R_base_tool = R_base_ee
     p_obj = T_base_obj[:3, 3]
 
-    # Apply X/Y offset compensation (in RM frame: X=forward, Y=left, Z=up)
-    p_obj_adjusted = p_obj + np.array([args.grasp_offset_x, args.grasp_offset_y, 0])
-    
-    # Grasp pose: at object position (or with small offset if needed)
-    p_grasp = p_obj_adjusted + np.array([0, 0, args.grasp_offset])  # 可以沿Z轴微调
+    # RM坐标系：X前，Y左，Z上
+    p_pregrasp = p_obj + np.array([0, 0, args.pregrasp_height])  # 沿Z轴向上
+    p_grasp = p_obj + np.array([0, 0, args.grasp_offset])  # 可以沿Z轴微调
 
     rx_cmd, ry_cmd, rz_cmd = rmat_to_rvec_zyx(R_base_tool)
     pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), float(p_pregrasp[2]), rx_cmd, ry_cmd, rz_cmd]
