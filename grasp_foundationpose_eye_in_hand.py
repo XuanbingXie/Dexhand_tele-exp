@@ -29,6 +29,22 @@ def load_hand_eye_transform(hand_eye_path: str) -> np.ndarray:
     return T
 
 
+def load_tool_transform(hand_eye_path: str) -> np.ndarray:
+    """
+    Load tool coordinate system offset (Link6 -> Gripper/TCP).
+    If not defined in hand_eye.json, returns identity matrix.
+    """
+    with open(hand_eye_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if "T_link6_gripper" in data:
+        T = np.asarray(data["T_link6_gripper"], dtype=np.float64)
+        assert T.shape == (4, 4), "T_link6_gripper must be 4x4"
+        return T
+    else:
+        # No tool offset defined, return identity (assume get_current_pose returns Link6)
+        return np.eye(4, dtype=np.float64)
+
+
 def rmat_to_rvec_zyx(R: np.ndarray) -> Tuple[float, float, float]:
     """
     Convert rotation matrix to ZYX intrinsic Euler angles (rx, ry, rz) in radians.
@@ -230,39 +246,50 @@ def main():
     hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
     import pdb; pdb.set_trace()
 
-    pose_cam_obj, info = detect_pose_with_foundationpose(args.mesh_file, debug_dir=os.path.join(ROOT_DIR, "fp_debug"), use_centroid=args.use_centroid)
+    pose_cam_obj, info = detect_pose_with_foundationpose(args.mesh_file, debug_dir=os.path.join(ROOT_DIR, "fp_debug"))
     mesh_to_center = info.get("mesh_to_center", np.eye(4, dtype=np.float64))
     T_cam_obj = pose_cam_obj @ mesh_to_center
 
     current_pose = robot.get_current_pose()
     x, y, z, rx, ry, rz = current_pose
 
-    # Build T_base_ee from current pose (assume rx,ry,rz is ZYX euler in radians)
+    # Build T_base_tcp from current pose (assume rx,ry,rz is ZYX euler in radians)
+    # Note: If tool coordinate is set, this is T_base_gripper; otherwise T_base_link6
     cx, sx = np.cos(rx), np.sin(rx)
     cy, sy = np.cos(ry), np.sin(ry)
     cz, sz = np.cos(rz), np.sin(rz)
     Rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]], dtype=np.float64)
     Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]], dtype=np.float64)
     Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]], dtype=np.float64)
-    R_base_ee = Rz @ Ry @ Rx
-    T_base_ee = np.eye(4, dtype=np.float64)
-    T_base_ee[:3, :3] = R_base_ee
-    T_base_ee[:3, 3] = [x, y, z]
+    R_base_tcp = Rz @ Ry @ Rx
+    T_base_tcp = np.eye(4, dtype=np.float64)
+    T_base_tcp[:3, :3] = R_base_tcp
+    T_base_tcp[:3, 3] = [x, y, z]
 
-    T_ee_cam = load_hand_eye_transform(args.hand_eye)
+    # Load hand-eye calibration (Link6 -> Camera)
+    T_link6_cam = load_hand_eye_transform(args.hand_eye)
+    
+    # Load tool offset (Link6 -> Gripper), if tool coordinate is set
+    T_link6_gripper = load_tool_transform(args.hand_eye)
+    
+    # Compute T_base_link6
+    # If tool coordinate is NOT set: T_base_tcp = T_base_link6 (identity compensation)
+    # If tool coordinate IS set: T_base_tcp = T_base_gripper, need to compensate
+    T_gripper_link6 = np.linalg.inv(T_link6_gripper)
+    T_base_link6 = T_base_tcp @ T_gripper_link6
     
     # Compute object pose in base frame with coordinate system conversion
     # 由于手眼标定是在 OpenCV 坐标系下做的，需要转换到 RM 坐标系
     # OpenCV: X右, Y下, Z前  →  RM: X前, Y左, Z上
     T_rm_cam = get_camera_to_rm_transform()
     T_cam_obj_rm = T_rm_cam @ T_cam_obj
-    T_ee_cam_rm = T_rm_cam @ T_ee_cam
-    T_cam_ee_rm = np.linalg.inv(T_ee_cam_rm)
-    T_ee_obj = T_cam_ee_rm @ T_cam_obj_rm
-    T_base_obj = T_base_ee @ T_ee_obj
+    T_link6_cam_rm = T_rm_cam @ T_link6_cam
+    T_cam_link6_rm = np.linalg.inv(T_link6_cam_rm)
+    T_link6_obj = T_cam_link6_rm @ T_cam_obj_rm
+    T_base_obj = T_base_link6 @ T_link6_obj
 
     # 5) Define grasp strategy: move to pre-grasp above object, then to grasp position
-    R_base_tool = R_base_ee
+    R_base_tool = R_base_tcp
     p_obj = T_base_obj[:3, 3]
 
     # RM坐标系：X前，Y左，Z上
