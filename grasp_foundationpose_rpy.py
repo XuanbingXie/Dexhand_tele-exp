@@ -372,8 +372,8 @@ def main():
     hand = LinkerHandApi(hand_type="right", hand_joint="L10")
     hand.set_speed(speed=[120,200,200,200,200])
 
-    point = [0.495221,-0.160842,-0.010122,-3.106,-1.048,0.827]
-    robot.movel(point, v = 20)
+    point = [0.468946,-0.142716,-0.019291,-2.955,-0.964,0.607]
+    robot.movel(point, v = 10)
     hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
     import pdb; pdb.set_trace()
 
@@ -451,15 +451,12 @@ def main():
     print(f"  RX={np.rad2deg(rx_grasp):.2f}°, RY={np.rad2deg(ry_grasp):.2f}°, RZ={np.rad2deg(rz_grasp):.2f}°")
     
     # RM坐标系：X前，Y左，Z上
-    p_pregrasp = p_obj + np.array([0, 0, args.pregrasp_height])  # 沿Z轴向上
-    p_grasp = p_obj + np.array([0, 0, args.grasp_offset])  # 可以沿Z轴微调
+    p_pregrasp = p_obj + np.array([0, 0, args.pregrasp_height])  
+    p_grasp = p_obj + np.array([0, 0, args.grasp_offset])  
 
     rx_cmd, ry_cmd, rz_cmd = rmat_to_rvec_zyx(R_base_gripper)
-    pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), -0.14, rx_cmd, ry_cmd, rz_cmd]
+    pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), -0.11, rx_cmd, ry_cmd, rz_cmd]
     pose_grasp = [float(p_grasp[0]), float(p_grasp[1]), float(p_grasp[2]), rx_cmd, ry_cmd, rz_cmd]
-
-    # 6) Execute motion and grasp
-    # Open before approach (for parallel jaw hands; for LinkerHand, use a spread pose)
     
     print(pose_pregrasp)
     import pdb; pdb.set_trace()

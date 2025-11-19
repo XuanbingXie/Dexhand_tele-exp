@@ -285,13 +285,11 @@ def move_smooth(robot: RobotArmController, target_pose: list,
     if current_pose is None:
         current_pose = list(robot.get_current_pose())
     
-    # 检查是否需要插入路径点（距离较远时）
     pos_diff = np.linalg.norm(np.array(target_pose[:3]) - np.array(current_pose[:3]))
     angle_diff = np.linalg.norm(np.array(target_pose[3:]) - np.array(current_pose[3:]))
     
     print(f"Position difference: {pos_diff:.3f}m, Angle difference: {angle_diff:.3f}rad")
     
-    # 如果距离很小，直接移动
     if pos_diff < 0.05 and angle_diff < 0.3:
         print("Small motion, direct movel")
         try:
@@ -302,11 +300,9 @@ def move_smooth(robot: RobotArmController, target_pose: list,
             print(f"Error: Failed to move: {e}")
             return False
     
-    # 距离较大，生成路径点
     print(f"Generating {num_waypoints} waypoints for smooth motion...")
     waypoints = generate_waypoints(current_pose, target_pose, num_waypoints)
     
-    # 逐个移动到路径点（只用 movel）
     for i, waypoint in enumerate(waypoints[1:], 1):  # 跳过起点
         print(f"Moving to waypoint {i}/{len(waypoints)-1}")
         try:
@@ -364,8 +360,8 @@ def main():
     
     # 运动平滑参数
     parser.add_argument("--safe_height", type=float, default=0.2, help="Safe height for transit motion (m)")
-    parser.add_argument("--approach_velocity", type=float, default=10, help="Velocity for approaching object (mm/s)")
-    parser.add_argument("--transit_velocity", type=float, default=20, help="Velocity for transit motion (mm/s)")
+    parser.add_argument("--approach_velocity", type=float, default=5, help="Velocity for approaching object (mm/s)")
+    parser.add_argument("--transit_velocity", type=float, default=10, help="Velocity for transit motion (mm/s)")
     parser.add_argument("--num_waypoints", type=int, default=10, help="Number of waypoints for smooth motion")
     
     args = parser.parse_args()
@@ -377,7 +373,7 @@ def main():
     hand = LinkerHandApi(hand_type="right", hand_joint="L10")
     hand.set_speed(speed=[120,200,200,200,200])
 
-    observation_point = [0.473533,-0.145475,-0.028986,-3.058,-0.717,0.629]
+    observation_point = [0.540505,-0.101333,-0.069656,-3.121,-1.132,0.774]
     current = list(robot.get_current_pose())
     
     # 使用平滑运动到观察位置
@@ -389,7 +385,7 @@ def main():
         return
     
     hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
-    time.sleep(0.5)
+    import pdb; pdb.set_trace()
 
     pose_cam_obj, info = detect_pose_with_foundationpose(args.mesh_file, debug_dir=os.path.join(ROOT_DIR, "fp_debug"))
     mesh_to_center = info.get("mesh_to_center", np.eye(4, dtype=np.float64))
