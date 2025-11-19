@@ -241,7 +241,7 @@ def main():
     hand = LinkerHandApi(hand_type="right", hand_joint="L10")
     hand.set_speed(speed=[120,200,200,200,200])
 
-    point = [0.495221,-0.160842,-0.010122,-3.106,-1.048,0.827]
+    point = [0.468946,-0.142716,-0.019291,-2.955,-0.964,0.607]
     robot.movel(point, v = 20)
     hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
     import pdb; pdb.set_trace()
@@ -305,7 +305,7 @@ def main():
     
     print(pose_pregrasp)
     import pdb; pdb.set_trace()
-    robot.movel(pose_pregrasp, v=10)
+    robot.movel(pose_pregrasp, v=8)
     import pdb; pdb.set_trace()
 
     hand.finger_move([103, 0, 160, 143, 135, 131, 255, 255, 255, 255])
