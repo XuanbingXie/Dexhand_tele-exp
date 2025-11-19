@@ -30,6 +30,10 @@ def load_hand_eye_transform(hand_eye_path: str) -> np.ndarray:
 
 
 def load_tool_transform(hand_eye_path: str) -> np.ndarray:
+    """
+    Load tool coordinate system offset (Link6 -> Gripper/TCP).
+    If not defined in hand_eye.json, returns identity matrix.
+    """
     with open(hand_eye_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if "T_link6_gripper" in data:
@@ -42,6 +46,10 @@ def load_tool_transform(hand_eye_path: str) -> np.ndarray:
 
 
 def rmat_to_rvec_zyx(R: np.ndarray) -> Tuple[float, float, float]:
+    """
+    Convert rotation matrix to ZYX intrinsic Euler angles (rx, ry, rz) in radians.
+    Returns (rx, ry, rz) corresponding to rotations about X, Y, Z respectively.
+    """
     sy = -R[2, 0]
     sy = np.clip(sy, -1.0, 1.0)
     ry = np.arcsin(sy)
@@ -52,137 +60,6 @@ def rmat_to_rvec_zyx(R: np.ndarray) -> Tuple[float, float, float]:
         rx = np.arctan2(R[2, 1], R[2, 2])
         rz = np.arctan2(R[1, 0], R[0, 0])
     return float(rx), float(ry), float(rz)
-
-
-def compute_grasp_orientation_topdown(T_base_obj: np.ndarray, gripper_down_axis: str = 'z') -> np.ndarray:
-    # Get object orientation
-    R_base_obj = T_base_obj[:3, :3]
-    
-    # Define gripper orientation: Z-axis points down (gravity direction)
-    # This is suitable for top-down grasping
-    z_gripper = np.array([0, 0, -1])  # Point downward in RM frame (Z-up)
-    
-    # X-axis of gripper aligns with object's X-axis (projected to XY plane)
-    obj_x_projected = R_base_obj[:, 0].copy()
-    obj_x_projected[2] = 0  # Project to XY plane
-    
-    if np.linalg.norm(obj_x_projected) > 0.01:
-        x_gripper = obj_x_projected / np.linalg.norm(obj_x_projected)
-    else:
-        # If object X is vertical, use world X
-        x_gripper = np.array([1, 0, 0])
-    
-    # Y-axis from cross product
-    y_gripper = np.cross(z_gripper, x_gripper)
-    y_gripper = y_gripper / np.linalg.norm(y_gripper)
-    
-    # Recompute X to ensure orthogonality
-    x_gripper = np.cross(y_gripper, z_gripper)
-    
-    R_base_gripper = np.column_stack([x_gripper, y_gripper, z_gripper])
-    
-    # IMPORTANT: Camera is on palm side, so we need to flip the hand 180° around Z-axis
-    # to make palm face down (for grasping) instead of up (observation pose)
-    R_flip = np.array([
-        [-1, 0, 0],  # Rotate 180° around Z
-        [0, -1, 0],
-        [0, 0, 1]
-    ], dtype=np.float64)
-    R_base_gripper = R_base_gripper @ R_flip
-    
-    return R_base_gripper
-
-
-def compute_grasp_orientation_align_object(T_base_obj: np.ndarray, rotate_around_z: float = 0.0) -> np.ndarray:
-    R_base_obj = T_base_obj[:3, :3]
-    
-    # Apply additional rotation around object Z-axis if needed
-    if abs(rotate_around_z) > 1e-6:
-        c, s = np.cos(rotate_around_z), np.sin(rotate_around_z)
-        R_z = np.array([
-            [c, -s, 0],
-            [s, c, 0],
-            [0, 0, 1]
-        ])
-        R_base_gripper = R_base_obj @ R_z
-    else:
-        R_base_gripper = R_base_obj.copy()
-    
-    # IMPORTANT: Camera is on palm side, flip 180° around gripper Z-axis
-    # to make palm face down for grasping
-    R_flip = np.array([
-        [-1, 0, 0],
-        [0, -1, 0],
-        [0, 0, 1]
-    ], dtype=np.float64)
-    R_base_gripper = R_base_gripper @ R_flip
-    
-    return R_base_gripper
-
-
-def compute_grasp_orientation_hybrid(T_base_obj: np.ndarray, approach_angle: float = 0.0) -> np.ndarray:
-    R_base_obj = T_base_obj[:3, :3]
-    
-    # Gripper Z-axis points down
-    z_gripper = np.array([0, 0, -1])
-    
-    # Find object's longest axis in XY plane
-    obj_x = R_base_obj[:, 0]
-    obj_y = R_base_obj[:, 1]
-    
-    # Project both axes to XY plane
-    obj_x_xy = obj_x.copy()
-    obj_x_xy[2] = 0
-    obj_y_xy = obj_y.copy()
-    obj_y_xy[2] = 0
-    
-    # Choose the axis with larger XY component
-    if np.linalg.norm(obj_x_xy) > np.linalg.norm(obj_y_xy):
-        principal_axis = obj_x_xy
-    else:
-        principal_axis = obj_y_xy
-    
-    if np.linalg.norm(principal_axis) > 0.01:
-        x_gripper = principal_axis / np.linalg.norm(principal_axis)
-    else:
-        x_gripper = np.array([1, 0, 0])
-    
-    # Apply additional rotation around Z
-    if abs(approach_angle) > 1e-6:
-        c, s = np.cos(approach_angle), np.sin(approach_angle)
-        R_z = np.array([[c, -s], [s, c]])
-        x_gripper[:2] = R_z @ x_gripper[:2]
-    
-    # Compute Y-axis
-    y_gripper = np.cross(z_gripper, x_gripper)
-    y_gripper = y_gripper / np.linalg.norm(y_gripper)
-    
-    # Recompute X for orthogonality
-    x_gripper = np.cross(y_gripper, z_gripper)
-    
-    R_base_gripper = np.column_stack([x_gripper, y_gripper, z_gripper])
-    
-    # IMPORTANT: Camera is on palm side, flip 180° around gripper Z-axis
-    # to make palm face down for grasping
-    R_flip = np.array([
-        [-1, 0, 0],
-        [0, -1, 0],
-        [0, 0, 1]
-    ], dtype=np.float64)
-    R_base_gripper = R_base_gripper @ R_flip
-    
-    return R_base_gripper
-
-
-def compute_grasp_orientation(T_base_obj: np.ndarray, strategy: str = "topdown", **kwargs) -> np.ndarray:
-    if strategy == "topdown":
-        return compute_grasp_orientation_topdown(T_base_obj, **kwargs)
-    elif strategy == "align":
-        return compute_grasp_orientation_align_object(T_base_obj, **kwargs)
-    elif strategy == "hybrid":
-        return compute_grasp_orientation_hybrid(T_base_obj, **kwargs)
-    else:
-        raise ValueError(f"Unknown strategy: {strategy}. Choose 'topdown', 'align', or 'hybrid'.")
 
 
 def get_mask_from_user(color: np.ndarray, depth: np.ndarray) -> np.ndarray:
@@ -348,20 +225,162 @@ def get_camera_to_rm_transform() -> np.ndarray:
     return T_rm_cam
 
 
+def interpolate_pose(pose_start: list, pose_end: list, alpha: float) -> list:
+    """
+    线性插值两个位姿，用于生成平滑路径点
+    
+    Args:
+        pose_start: 起始位姿 [x, y, z, rx, ry, rz]
+        pose_end: 目标位姿 [x, y, z, rx, ry, rz]
+        alpha: 插值系数 [0, 1]，0=起点，1=终点
+    
+    Returns:
+        插值后的位姿
+    """
+    pose = []
+    for i in range(6):
+        pose.append((1 - alpha) * pose_start[i] + alpha * pose_end[i])
+    return pose
+
+
+def generate_waypoints(pose_start: list, pose_end: list, num_points: int = 5) -> list:
+    """
+    在两个位姿之间生成多个中间路径点
+    
+    Args:
+        pose_start: 起始位姿
+        pose_end: 目标位姿
+        num_points: 中间点数量（不包括起点和终点）
+    
+    Returns:
+        包含所有路径点的列表
+    """
+    waypoints = [pose_start]
+    for i in range(1, num_points + 1):
+        alpha = i / (num_points + 1)
+        waypoint = interpolate_pose(pose_start, pose_end, alpha)
+        waypoints.append(waypoint)
+    waypoints.append(pose_end)
+    return waypoints
+
+
+def move_smooth(robot: RobotArmController, target_pose: list, 
+                current_pose: list = None, 
+                velocity: float = 10, 
+                num_waypoints: int = 3,
+                use_movej: bool = False) -> bool:
+    """
+    平滑移动到目标位姿，通过插入中间路径点避免关节突变
+    
+    Args:
+        robot: 机械臂控制器
+        target_pose: 目标位姿 [x, y, z, rx, ry, rz]
+        current_pose: 当前位姿（如果为None则自动获取）
+        velocity: 运动速度
+        num_waypoints: 中间路径点数量
+        use_movej: 是否使用关节空间运动（更安全但路径非直线）
+    
+    Returns:
+        是否成功
+    """
+    if current_pose is None:
+        current_pose = list(robot.get_current_pose())
+    
+    # 检查是否需要插入路径点（距离较远时）
+    pos_diff = np.linalg.norm(np.array(target_pose[:3]) - np.array(current_pose[:3]))
+    angle_diff = np.linalg.norm(np.array(target_pose[3:]) - np.array(current_pose[3:]))
+    
+    print(f"Position difference: {pos_diff:.3f}m, Angle difference: {angle_diff:.3f}rad")
+    
+    # 如果距离很小，直接移动
+    if pos_diff < 0.05 and angle_diff < 0.3:
+        print("Small motion, direct move")
+        if use_movej:
+            robot.movej(target_pose, v=velocity)
+        else:
+            robot.movel(target_pose, v=velocity)
+        time.sleep(0.1)
+        return True
+    
+    # 距离较大，生成路径点
+    print(f"Generating {num_waypoints} waypoints for smooth motion...")
+    waypoints = generate_waypoints(current_pose, target_pose, num_waypoints)
+    
+    # 逐个移动到路径点
+    for i, waypoint in enumerate(waypoints[1:], 1):  # 跳过起点
+        print(f"Moving to waypoint {i}/{len(waypoints)-1}")
+        try:
+            if use_movej:
+                robot.movej(waypoint, v=velocity)
+            else:
+                robot.movel(waypoint, v=velocity)
+            time.sleep(0.05)  # 短暂等待确保到位
+        except Exception as e:
+            print(f"Warning: Failed to reach waypoint {i}: {e}")
+            print("Trying with movej instead...")
+            try:
+                robot.movej(waypoint, v=velocity)
+                time.sleep(0.05)
+            except Exception as e2:
+                print(f"Error: Still failed with movej: {e2}")
+                return False
+    
+    print("Smooth motion completed")
+    return True
+
+
+def move_to_safe_height(robot: RobotArmController, safe_z: float = 0.2, velocity: float = 20) -> bool:
+    """
+    移动到安全高度（避免碰撞）
+    
+    Args:
+        robot: 机械臂控制器
+        safe_z: 安全高度（米）
+        velocity: 运动速度
+    
+    Returns:
+        是否成功
+    """
+    current_pose = list(robot.get_current_pose())
+    
+    # 只改变Z高度，保持其他不变
+    if current_pose[2] < safe_z:
+        print(f"Lifting to safe height: {safe_z}m")
+        safe_pose = current_pose.copy()
+        safe_pose[2] = safe_z
+        
+        try:
+            robot.movel(safe_pose, v=velocity)
+            time.sleep(0.2)
+            return True
+        except Exception as e:
+            print(f"Warning: Failed to lift with movel: {e}")
+            print("Trying with movej...")
+            try:
+                robot.movej(safe_pose, v=velocity)
+                time.sleep(0.2)
+                return True
+            except Exception as e2:
+                print(f"Error: Failed to reach safe height: {e2}")
+                return False
+    else:
+        print(f"Already at safe height: {current_pose[2]:.3f}m")
+        return True
+
+
 def main():
-    parser = argparse.ArgumentParser(description="FoundationPose-based grasping with automatic grasp orientation computation")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--mesh_file", type=str, required=True)
     parser.add_argument("--hand_eye", type=str, required=True, help="JSON file containing {'T_ee_cam': [[...],[...],[...],[...]]}")
     parser.add_argument("--pregrasp_height", type=float, default=0.01, help="pre-grasp height above object in RM Z direction (m)")
     parser.add_argument("--grasp_offset", type=float, default=0.0, help="final Z offset from object position for grasp (m)")
     parser.add_argument("--hand_speed", type=int, default=120)
     
-    # Grasp orientation strategy arguments
-    parser.add_argument("--grasp_strategy", type=str, default="topdown", 
-                        choices=["topdown", "align", "hybrid", "fixed"],
-                        help="Grasp orientation strategy: topdown (from above), align (match object), hybrid (rotate around Z), fixed (use current pose)")
-    parser.add_argument("--rotate_angle", type=float, default=0.0,
-                        help="Additional rotation angle in degrees (for align/hybrid strategies)")
+    # 运动平滑参数
+    parser.add_argument("--safe_height", type=float, default=0.2, help="Safe height for transit motion (m)")
+    parser.add_argument("--approach_velocity", type=float, default=10, help="Velocity for approaching object (mm/s)")
+    parser.add_argument("--transit_velocity", type=float, default=20, help="Velocity for transit motion (mm/s)")
+    parser.add_argument("--num_waypoints", type=int, default=10, help="Number of waypoints for smooth motion")
     
     args = parser.parse_args()
 
@@ -372,10 +391,19 @@ def main():
     hand = LinkerHandApi(hand_type="right", hand_joint="L10")
     hand.set_speed(speed=[120,200,200,200,200])
 
-    point = [0.495221,-0.160842,-0.010122,-3.106,-1.048,0.827]
-    robot.movel(point, v = 20)
+    observation_point = [0.473533,-0.145475,-0.028986,-3.058,-0.717,0.629]
+    current = list(robot.get_current_pose())
+    
+    if not move_smooth(robot, observation_point, current, 
+                       velocity=args.transit_velocity, 
+                       num_waypoints=args.num_waypoints,
+                       use_movej=True):
+        print("Failed to reach observation pose")
+        robot.disconnect()
+        return
+    
     hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
-    import pdb; pdb.set_trace()
+    time.sleep(0.5)
 
     pose_cam_obj, info = detect_pose_with_foundationpose(args.mesh_file, debug_dir=os.path.join(ROOT_DIR, "fp_debug"))
     mesh_to_center = info.get("mesh_to_center", np.eye(4, dtype=np.float64))
@@ -419,57 +447,63 @@ def main():
     T_link6_obj = T_cam_link6_rm @ T_cam_obj_rm
     T_base_obj = T_base_link6 @ T_link6_obj
 
-    # 5) Compute grasp orientation based on object pose
+    # 5) Define grasp strategy: move to pre-grasp above object, then to grasp position
+    R_base_tool = R_base_tcp
     p_obj = T_base_obj[:3, 3]
-    
-    if args.grasp_strategy == "fixed":
-        # Use current robot pose (original behavior)
-        R_base_gripper = R_base_tcp
-        print("Using FIXED grasp orientation (current robot pose)")
-    else:
-        # Compute orientation from object pose
-        rotate_rad = np.deg2rad(args.rotate_angle)
-        
-        if args.grasp_strategy == "topdown":
-            R_base_gripper = compute_grasp_orientation_topdown(T_base_obj)
-            print(f"Using TOP-DOWN grasp strategy")
-        elif args.grasp_strategy == "align":
-            R_base_gripper = compute_grasp_orientation_align_object(T_base_obj, rotate_around_z=rotate_rad)
-            print(f"Using ALIGN strategy (rotate: {args.rotate_angle}°)")
-        elif args.grasp_strategy == "hybrid":
-            R_base_gripper = compute_grasp_orientation_hybrid(T_base_obj, approach_angle=rotate_rad)
-            print(f"Using HYBRID strategy (approach angle: {args.rotate_angle}°)")
-    
-    # Visualize the computed grasp frame
-    print(f"\nObject position: [{p_obj[0]:.4f}, {p_obj[1]:.4f}, {p_obj[2]:.4f}]")
-    print(f"Object orientation (ZYX Euler):")
-    rx_obj, ry_obj, rz_obj = rmat_to_rvec_zyx(T_base_obj[:3, :3])
-    print(f"  RX={np.rad2deg(rx_obj):.2f}°, RY={np.rad2deg(ry_obj):.2f}°, RZ={np.rad2deg(rz_obj):.2f}°")
-    
-    print(f"\nComputed grasp orientation (ZYX Euler):")
-    rx_grasp, ry_grasp, rz_grasp = rmat_to_rvec_zyx(R_base_gripper)
-    print(f"  RX={np.rad2deg(rx_grasp):.2f}°, RY={np.rad2deg(ry_grasp):.2f}°, RZ={np.rad2deg(rz_grasp):.2f}°")
-    
+
     # RM坐标系：X前，Y左，Z上
     p_pregrasp = p_obj + np.array([0, 0, args.pregrasp_height])  # 沿Z轴向上
     p_grasp = p_obj + np.array([0, 0, args.grasp_offset])  # 可以沿Z轴微调
 
-    rx_cmd, ry_cmd, rz_cmd = rmat_to_rvec_zyx(R_base_gripper)
+    rx_cmd, ry_cmd, rz_cmd = rmat_to_rvec_zyx(R_base_tool)
     pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), -0.14, rx_cmd, ry_cmd, rz_cmd]
     pose_grasp = [float(p_grasp[0]), float(p_grasp[1]), float(p_grasp[2]), rx_cmd, ry_cmd, rz_cmd]
 
-    # 6) Execute motion and grasp
-    # Open before approach (for parallel jaw hands; for LinkerHand, use a spread pose)
+    print(f"Pre-grasp pose: {pose_pregrasp}")
+    import pdb; pdb.set_trace()
+    if not move_to_safe_height(robot, safe_z=args.safe_height, velocity=args.transit_velocity):
+        print("Failed to reach safe height, aborting...")
+        robot.disconnect()
+        return
+    import pdb; pdb.set_trace()
+    current = list(robot.get_current_pose())
+    above_pregrasp = pose_pregrasp.copy()
+    above_pregrasp[2] = max(args.safe_height, pose_pregrasp[2] + 0.1)  # 保持在安全高度或更高
     
-    print(pose_pregrasp)
+    if not move_smooth(robot, above_pregrasp, current, 
+                       velocity=args.transit_velocity, 
+                       num_waypoints=args.num_waypoints,
+                       use_movej=True):  
+        print("Failed to reach above pre-grasp, aborting...")
+        robot.disconnect()
+        return
+    
     import pdb; pdb.set_trace()
-    robot.movel(pose_pregrasp, v=10)
+    print("\n[Step 3] Descending to pre-grasp position...")
+    current = list(robot.get_current_pose())
+    if not move_smooth(robot, pose_pregrasp, current,
+                       velocity=args.approach_velocity,
+                       num_waypoints=2,
+                       use_movej=False): 
+        print("Failed to reach pre-grasp position, aborting...")
+        robot.disconnect()
+        return
+    
+    time.sleep(0.3)  # 稳定
+    
     import pdb; pdb.set_trace()
+    print("\n[Step 5] Final approach to grasp position...")
+    current = list(robot.get_current_pose())
+    if not move_smooth(robot, pose_grasp, current,
+                       velocity=args.approach_velocity / 2,  # 更慢的速度
+                       num_waypoints=1,
+                       use_movej=False):
+        print("Warning: Failed to reach exact grasp position, grasping at current position...")
 
     hand.finger_move([103, 0, 160, 143, 135, 131, 255, 255, 255, 255])
     # r = 15圆柱
     # hand.finger_move([103, 53, 160, 143, 135, 131, 255, 255, 255, 255])
-
+    
     robot.disconnect()
 
 
