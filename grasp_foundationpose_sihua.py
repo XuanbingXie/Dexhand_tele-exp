@@ -267,18 +267,17 @@ def generate_waypoints(pose_start: list, pose_end: list, num_points: int = 5) ->
 def move_smooth(robot: RobotArmController, target_pose: list, 
                 current_pose: list = None, 
                 velocity: float = 10, 
-                num_waypoints: int = 3,
-                use_movej: bool = False) -> bool:
+                num_waypoints: int = 3) -> bool:
     """
     平滑移动到目标位姿，通过插入中间路径点避免关节突变
+    警告：只使用 movel (笛卡尔空间运动)，不要用 movej！
     
     Args:
         robot: 机械臂控制器
-        target_pose: 目标位姿 [x, y, z, rx, ry, rz]
+        target_pose: 目标位姿 [x, y, z, rx, ry, rz] (笛卡尔坐标)
         current_pose: 当前位姿（如果为None则自动获取）
-        velocity: 运动速度
+        velocity: 运动速度 (mm/s)
         num_waypoints: 中间路径点数量
-        use_movej: 是否使用关节空间运动（更安全但路径非直线）
     
     Returns:
         是否成功
@@ -294,36 +293,29 @@ def move_smooth(robot: RobotArmController, target_pose: list,
     
     # 如果距离很小，直接移动
     if pos_diff < 0.05 and angle_diff < 0.3:
-        print("Small motion, direct move")
-        if use_movej:
-            robot.movej(target_pose, v=velocity)
-        else:
+        print("Small motion, direct movel")
+        try:
             robot.movel(target_pose, v=velocity)
-        time.sleep(0.1)
-        return True
+            time.sleep(0.1)
+            return True
+        except Exception as e:
+            print(f"Error: Failed to move: {e}")
+            return False
     
     # 距离较大，生成路径点
     print(f"Generating {num_waypoints} waypoints for smooth motion...")
     waypoints = generate_waypoints(current_pose, target_pose, num_waypoints)
     
-    # 逐个移动到路径点
+    # 逐个移动到路径点（只用 movel）
     for i, waypoint in enumerate(waypoints[1:], 1):  # 跳过起点
         print(f"Moving to waypoint {i}/{len(waypoints)-1}")
         try:
-            if use_movej:
-                robot.movej(waypoint, v=velocity)
-            else:
-                robot.movel(waypoint, v=velocity)
-            time.sleep(0.05)  # 短暂等待确保到位
+            robot.movel(waypoint, v=velocity)
+            time.sleep(0.05) 
         except Exception as e:
-            print(f"Warning: Failed to reach waypoint {i}: {e}")
-            print("Trying with movej instead...")
-            try:
-                robot.movej(waypoint, v=velocity)
-                time.sleep(0.05)
-            except Exception as e2:
-                print(f"Error: Still failed with movej: {e2}")
-                return False
+            print(f"Error: Failed to reach waypoint {i}: {e}")
+            print("Aborting smooth motion for safety")
+            return False
     
     print("Smooth motion completed")
     return True
@@ -332,11 +324,12 @@ def move_smooth(robot: RobotArmController, target_pose: list,
 def move_to_safe_height(robot: RobotArmController, safe_z: float = 0.2, velocity: float = 20) -> bool:
     """
     移动到安全高度（避免碰撞）
+    只使用 movel，垂直上升
     
     Args:
         robot: 机械臂控制器
         safe_z: 安全高度（米）
-        velocity: 运动速度
+        velocity: 运动速度 (mm/s)
     
     Returns:
         是否成功
@@ -354,15 +347,8 @@ def move_to_safe_height(robot: RobotArmController, safe_z: float = 0.2, velocity
             time.sleep(0.2)
             return True
         except Exception as e:
-            print(f"Warning: Failed to lift with movel: {e}")
-            print("Trying with movej...")
-            try:
-                robot.movej(safe_pose, v=velocity)
-                time.sleep(0.2)
-                return True
-            except Exception as e2:
-                print(f"Error: Failed to reach safe height: {e2}")
-                return False
+            print(f"Error: Failed to reach safe height: {e}")
+            return False
     else:
         print(f"Already at safe height: {current_pose[2]:.3f}m")
         return True
@@ -394,10 +380,10 @@ def main():
     observation_point = [0.473533,-0.145475,-0.028986,-3.058,-0.717,0.629]
     current = list(robot.get_current_pose())
     
+    # 使用平滑运动到观察位置
     if not move_smooth(robot, observation_point, current, 
                        velocity=args.transit_velocity, 
-                       num_waypoints=args.num_waypoints,
-                       use_movej=True):
+                       num_waypoints=args.num_waypoints):
         print("Failed to reach observation pose")
         robot.disconnect()
         return
@@ -472,8 +458,7 @@ def main():
     
     if not move_smooth(robot, above_pregrasp, current, 
                        velocity=args.transit_velocity, 
-                       num_waypoints=args.num_waypoints,
-                       use_movej=True):  
+                       num_waypoints=args.num_waypoints):
         print("Failed to reach above pre-grasp, aborting...")
         robot.disconnect()
         return
@@ -483,8 +468,7 @@ def main():
     current = list(robot.get_current_pose())
     if not move_smooth(robot, pose_pregrasp, current,
                        velocity=args.approach_velocity,
-                       num_waypoints=2,
-                       use_movej=False): 
+                       num_waypoints=2): 
         print("Failed to reach pre-grasp position, aborting...")
         robot.disconnect()
         return
@@ -496,8 +480,7 @@ def main():
     current = list(robot.get_current_pose())
     if not move_smooth(robot, pose_grasp, current,
                        velocity=args.approach_velocity / 2,  # 更慢的速度
-                       num_waypoints=1,
-                       use_movej=False):
+                       num_waypoints=1):
         print("Warning: Failed to reach exact grasp position, grasping at current position...")
 
     hand.finger_move([103, 0, 160, 143, 135, 131, 255, 255, 255, 255])
