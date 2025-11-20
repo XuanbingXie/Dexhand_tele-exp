@@ -225,9 +225,27 @@ def get_camera_to_rm_transform() -> np.ndarray:
     return T_rm_cam
 
 
+def normalize_angle_diff(angle_diff: float) -> float:
+    """
+    将角度差归一化到 [-π, π] 范围，确保最短路径
+    
+    Args:
+        angle_diff: 角度差（弧度）
+    
+    Returns:
+        归一化后的角度差
+    """
+    while angle_diff > np.pi:
+        angle_diff -= 2 * np.pi
+    while angle_diff < -np.pi:
+        angle_diff += 2 * np.pi
+    return angle_diff
+
+
 def interpolate_pose(pose_start: list, pose_end: list, alpha: float) -> list:
     """
     线性插值两个位姿，用于生成平滑路径点
+    对于角度（rx, ry, rz），使用最短路径插值避免不必要的旋转
     
     Args:
         pose_start: 起始位姿 [x, y, z, rx, ry, rz]
@@ -239,7 +257,21 @@ def interpolate_pose(pose_start: list, pose_end: list, alpha: float) -> list:
     """
     pose = []
     for i in range(6):
-        pose.append((1 - alpha) * pose_start[i] + alpha * pose_end[i])
+        if i < 3:
+            # 位置：直接线性插值
+            pose.append((1 - alpha) * pose_start[i] + alpha * pose_end[i])
+        else:
+            # 姿态（欧拉角）：使用最短路径插值
+            angle_start = pose_start[i]
+            angle_end = pose_end[i]
+            
+            # 计算角度差并归一化到 [-π, π]
+            angle_diff = normalize_angle_diff(angle_end - angle_start)
+            
+            # 沿最短路径插值
+            interpolated_angle = angle_start + alpha * angle_diff
+            pose.append(interpolated_angle)
+    
     return pose
 
 
@@ -286,11 +318,18 @@ def move_smooth(robot: RobotArmController, target_pose: list,
         current_pose = list(robot.get_current_pose())
     
     pos_diff = np.linalg.norm(np.array(target_pose[:3]) - np.array(current_pose[:3]))
-    angle_diff = np.linalg.norm(np.array(target_pose[3:]) - np.array(current_pose[3:]))
+    angle_diffs = []
+    for i in range(3, 6):
+        diff = normalize_angle_diff(target_pose[i] - current_pose[i])
+        angle_diffs.append(diff)
+    angle_diff_norm = np.linalg.norm(angle_diffs)
     
-    print(f"Position difference: {pos_diff:.3f}m, Angle difference: {angle_diff:.3f}rad")
+    print(f"Position diff: {pos_diff:.3f}m")
+    print(f"Angle diffs (shortest path): RX={np.rad2deg(angle_diffs[0]):.1f}°, "
+          f"RY={np.rad2deg(angle_diffs[1]):.1f}°, RZ={np.rad2deg(angle_diffs[2]):.1f}° "
+          f"(total: {angle_diff_norm:.3f}rad)")
     
-    if pos_diff < 0.05 and angle_diff < 0.3:
+    if pos_diff < 0.05 and angle_diff_norm < 0.3:
         print("Small motion, direct movel")
         try:
             robot.movel(target_pose, v=velocity)
@@ -318,18 +357,6 @@ def move_smooth(robot: RobotArmController, target_pose: list,
 
 
 def move_to_safe_height(robot: RobotArmController, safe_z: float = 0.2, velocity: float = 20) -> bool:
-    """
-    移动到安全高度（避免碰撞）
-    只使用 movel，垂直上升
-    
-    Args:
-        robot: 机械臂控制器
-        safe_z: 安全高度（米）
-        velocity: 运动速度 (mm/s)
-    
-    Returns:
-        是否成功
-    """
     current_pose = list(robot.get_current_pose())
     
     # 只改变Z高度，保持其他不变
@@ -362,7 +389,7 @@ def main():
     parser.add_argument("--safe_height", type=float, default=0.2, help="Safe height for transit motion (m)")
     parser.add_argument("--approach_velocity", type=float, default=5, help="Velocity for approaching object (mm/s)")
     parser.add_argument("--transit_velocity", type=float, default=10, help="Velocity for transit motion (mm/s)")
-    parser.add_argument("--num_waypoints", type=int, default=10, help="Number of waypoints for smooth motion")
+    parser.add_argument("--num_waypoints", type=int, default=5, help="Number of waypoints for smooth motion")
     
     args = parser.parse_args()
 
@@ -376,7 +403,6 @@ def main():
     observation_point = [0.540505,-0.101333,-0.069656,-3.121,-1.132,0.774]
     current = list(robot.get_current_pose())
     
-    # 使用平滑运动到观察位置
     if not move_smooth(robot, observation_point, current, 
                        velocity=args.transit_velocity, 
                        num_waypoints=args.num_waypoints):
