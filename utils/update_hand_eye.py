@@ -55,5 +55,4 @@ with open("hand_eye.json", "w") as f:
     json.dump(data, f, indent=2)
 
 print("✅ hand_eye.json 已更新！")
-print("\n差异分析:")
-print(f"平移差异: ΔX={-0.073 - tx:.4f}m, ΔY={0.019 - ty:.4f}m, ΔZ={0.022 - tz:.4f}m")
+

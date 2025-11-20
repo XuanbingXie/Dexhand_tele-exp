@@ -241,8 +241,8 @@ def main():
     hand = LinkerHandApi(hand_type="right", hand_joint="L10")
     hand.set_speed(speed=[120,200,200,200,200])
 
-    point = [0.468946,-0.142716,-0.019291,-2.955,-0.964,0.607]
-    robot.movel(point, v = 20)
+    point = [0.449574,-0.136981,0.138464,3.021,-0.954,1.098]
+    robot.movej_p(point, v = 15)
     hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
     import pdb; pdb.set_trace()
 
@@ -291,26 +291,19 @@ def main():
     # 5) Define grasp strategy: move to pre-grasp above object, then to grasp position
     R_base_tool = R_base_tcp
     p_obj = T_base_obj[:3, 3]
-
-    # RM坐标系：X前，Y左，Z上
     p_pregrasp = p_obj + np.array([0, 0, args.pregrasp_height])  # 沿Z轴向上
-    p_grasp = p_obj + np.array([0, 0, args.grasp_offset])  # 可以沿Z轴微调
-
+    print("Object position in base frame:", p_obj)
     rx_cmd, ry_cmd, rz_cmd = rmat_to_rvec_zyx(R_base_tool)
-    pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), -0.14, rx_cmd, ry_cmd, rz_cmd]
-    pose_grasp = [float(p_grasp[0]), float(p_grasp[1]), float(p_grasp[2]), rx_cmd, ry_cmd, rz_cmd]
-
-    # 6) Execute motion and grasp
-    # Open before approach (for parallel jaw hands; for LinkerHand, use a spread pose)
-    
+    pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), 0.08, rx_cmd, ry_cmd, rz_cmd]
     print(pose_pregrasp)
     import pdb; pdb.set_trace()
-    robot.movel(pose_pregrasp, v=8)
+    robot.movej_p(pose_pregrasp, v=5)
+    hand.finger_move([150, 53, 180, 180, 180, 255, 255, 255, 255, 121])
     import pdb; pdb.set_trace()
-
-    hand.finger_move([103, 0, 160, 143, 135, 131, 255, 255, 255, 255])
+    pose_grasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), 0.04, rx_cmd, ry_cmd, rz_cmd]
+    robot.movej_p(pose_grasp, v=5)
     # r = 15圆柱
-    # hand.finger_move([103, 53, 160, 143, 135, 131, 255, 255, 255, 255])
+    hand.finger_move([186, 142, 135, 129, 135, 255, 107, 26, 0, 113])
 
     robot.disconnect()
 
