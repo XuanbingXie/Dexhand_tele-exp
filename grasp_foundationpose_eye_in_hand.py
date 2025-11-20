@@ -279,20 +279,30 @@ def main():
     T_base_link6 = T_base_tcp @ T_gripper_link6
     
     # Compute object pose in base frame with coordinate system conversion
-    # 由于手眼标定是在 OpenCV 坐标系下做的，需要转换到 RM 坐标系
+    print("\n=== Coordinate Transformation Debug ===")
+    print(f"Current TCP pose in base: X={x:.3f}, Y={y:.3f}, Z={z:.3f}")
+    print(f"Object in camera (OpenCV): {T_cam_obj[:3, 3]}")
+    
+    # Step 1: 在 OpenCV 坐标系中计算物体在 base 的位置
+    # T_base_obj_opencv = T_base_link6 @ T_link6_cam @ T_cam_obj
+    T_base_obj_opencv = T_base_link6 @ T_link6_cam @ T_cam_obj
+    print(f"Object in base (OpenCV frame): {T_base_obj_opencv[:3, 3]}")
+    
+    # Step 2: 将结果从 OpenCV 坐标系转换到 RM 坐标系
     # OpenCV: X右, Y下, Z前  →  RM: X前, Y左, Z上
-    T_rm_cam = get_camera_to_rm_transform()
-    T_cam_obj_rm = T_rm_cam @ T_cam_obj
-    T_link6_cam_rm = T_rm_cam @ T_link6_cam
-    T_cam_link6_rm = np.linalg.inv(T_link6_cam_rm)
-    T_link6_obj = T_cam_link6_rm @ T_cam_obj_rm
-    T_base_obj = T_base_link6 @ T_link6_obj
+    T_rm_opencv = get_camera_to_rm_transform()
+    T_base_obj = T_base_obj_opencv.copy()
+    T_base_obj[:3, 3] = T_rm_opencv[:3, :3] @ T_base_obj_opencv[:3, 3]  # 只转换位置
+    T_base_obj[:3, :3] = T_rm_opencv[:3, :3] @ T_base_obj_opencv[:3, :3]  # 转换姿态
+    
+    print(f"Object in base (RM frame): {T_base_obj[:3, 3]}")
+    p_obj = T_base_obj[:3, 3]
 
     # 5) Define grasp strategy: move to pre-grasp above object, then to grasp position
     R_base_tool = R_base_tcp
-    p_obj = T_base_obj[:3, 3]
     p_pregrasp = p_obj + np.array([0, 0, args.pregrasp_height])  # 沿Z轴向上
-    print("Object position in base frame:", p_obj)
+    print(f"Object position in base frame: X={p_obj[0]:.3f}, Y={p_obj[1]:.3f}, Z={p_obj[2]:.3f}")
+    
     rx_cmd, ry_cmd, rz_cmd = rmat_to_rvec_zyx(R_base_tool)
     pose_pregrasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), 0.08, rx_cmd, ry_cmd, rz_cmd]
     print(pose_pregrasp)
