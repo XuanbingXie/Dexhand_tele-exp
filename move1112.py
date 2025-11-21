@@ -188,7 +188,7 @@ def main():
     points = arm_models_to_points.get(arm_model, [])
 
     # init point
-    point = [0.4445084510087285, -0.08167960536138688, 0.0415, 3.0209670066833496, -0.9540641903877258, 1.0978907346725464]
+    point = [0.308693,-0.255243,0.207633,-3.093,0.431,-2.39]
     robot_controller.movej_p(point, v = 5)
     pose = robot_controller.get_current_pose()
     print("当前末端位姿:", pose)
