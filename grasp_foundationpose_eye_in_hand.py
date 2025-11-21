@@ -269,31 +269,36 @@ def main():
     # Load hand-eye calibration (Link6 -> Camera)
     T_link6_cam = load_hand_eye_transform(args.hand_eye)
     
-    # Load tool offset (Link6 -> Gripper), if tool coordinate is set
-    T_link6_gripper = load_tool_transform(args.hand_eye)
-    
-    # Compute T_base_link6
-    # If tool coordinate is NOT set: T_base_tcp = T_base_link6 (identity compensation)
-    # If tool coordinate IS set: T_base_tcp = T_base_gripper, need to compensate
-    T_gripper_link6 = np.linalg.inv(T_link6_gripper)
-    T_base_link6 = T_base_tcp @ T_gripper_link6
-    
-    # Compute object pose in base frame with coordinate system conversion
     print("\n=== Coordinate Transformation Debug ===")
-    print(f"Current TCP pose in base: X={x:.3f}, Y={y:.3f}, Z={z:.3f}")
+    print(f"Current TCP (Gripper) pose in base: X={x:.3f}, Y={y:.3f}, Z={z:.3f}")
     print(f"Object in camera (OpenCV): {T_cam_obj[:3, 3]}")
     
-    # Step 1: 在 OpenCV 坐标系中计算物体在 base 的位置
-    # T_base_obj_opencv = T_base_link6 @ T_link6_cam @ T_cam_obj
+    # 关键：机器人返回的是 Gripper 位置（工具坐标系），需要转换回 Link6
+    # 工具偏移：Gripper 在 Link6 的 Z 轴正方向 +180mm
+    # 所以 Link6 = Gripper - 180mm * Gripper_Z_axis
+    
+    # 计算 Link6 位置：沿着 Gripper 的 Z 轴向下 180mm
+    gripper_z_axis = R_base_tcp[:, 2]  # Gripper 的 Z 轴方向（在 base 坐标系中）
+    tool_offset_vector = -0.18 * gripper_z_axis  # 向下 180mm
+    
+    p_link6 = np.array([x, y, z]) + tool_offset_vector
+    T_base_link6 = np.eye(4, dtype=np.float64)
+    T_base_link6[:3, :3] = R_base_tcp  # 姿态相同
+    T_base_link6[:3, 3] = p_link6
+    
+    print(f"Computed Link6 pose in base: X={p_link6[0]:.3f}, Y={p_link6[1]:.3f}, Z={p_link6[2]:.3f}")
+    print(f"Tool offset applied: {tool_offset_vector}")
+    
+    # 计算物体在 base 坐标系的位置（OpenCV 坐标系）
     T_base_obj_opencv = T_base_link6 @ T_link6_cam @ T_cam_obj
     print(f"Object in base (OpenCV frame): {T_base_obj_opencv[:3, 3]}")
     
-    # Step 2: 将结果从 OpenCV 坐标系转换到 RM 坐标系
+    # 转换到 RM 坐标系
     # OpenCV: X右, Y下, Z前  →  RM: X前, Y左, Z上
     T_rm_opencv = get_camera_to_rm_transform()
     T_base_obj = T_base_obj_opencv.copy()
-    T_base_obj[:3, 3] = T_rm_opencv[:3, :3] @ T_base_obj_opencv[:3, 3]  # 只转换位置
-    T_base_obj[:3, :3] = T_rm_opencv[:3, :3] @ T_base_obj_opencv[:3, :3]  # 转换姿态
+    T_base_obj[:3, 3] = T_rm_opencv[:3, :3] @ T_base_obj_opencv[:3, 3]
+    T_base_obj[:3, :3] = T_rm_opencv[:3, :3] @ T_base_obj_opencv[:3, :3]
     
     print(f"Object in base (RM frame): {T_base_obj[:3, 3]}")
     p_obj = T_base_obj[:3, 3]
