@@ -240,10 +240,9 @@ def main():
     robot = RobotArmController("192.168.1.28", 8080, 3)
     hand = LinkerHandApi(hand_type="right", hand_joint="L10")
     hand.set_speed(speed=[120,200,200,200,200])
-
+    hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
     point = [0.449574,-0.136981,0.138464,3.021,-0.954,1.098]
     robot.movej_p(point, v = 15)
-    hand.finger_move([255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
     import pdb; pdb.set_trace()
 
     pose_cam_obj, info = detect_pose_with_foundationpose(args.mesh_file, debug_dir=os.path.join(ROOT_DIR, "fp_debug"))
@@ -300,10 +299,15 @@ def main():
     robot.movej_p(pose_pregrasp, v=5)
     hand.finger_move([150, 53, 180, 180, 180, 255, 255, 255, 255, 121])
     import pdb; pdb.set_trace()
-    pose_grasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), 0.04, rx_cmd, ry_cmd, rz_cmd]
+    pose_grasp = [float(p_pregrasp[0]), float(p_pregrasp[1]), 0.038, rx_cmd, ry_cmd, rz_cmd]
     robot.movej_p(pose_grasp, v=5)
-    # r = 15圆柱
-    hand.finger_move([186, 142, 135, 129, 135, 255, 107, 26, 0, 113])
+    import pdb; pdb.set_trace()
+    # # r = 15圆柱
+    # hand.finger_move([186, 142, 135, 129, 135, 255, 107, 26, 0, 113])
+    # r = 12.5圆柱
+    hand.finger_move([144, 121, 144, 136, 142, 255, 185, 62, 0, 190])
+    import pdb; pdb.set_trace()
+    robot.movej_p(pose_pregrasp, v=5)
 
     robot.disconnect()
 

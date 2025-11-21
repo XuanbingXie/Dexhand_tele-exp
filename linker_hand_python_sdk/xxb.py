@@ -10,14 +10,27 @@ def main():
     #大拇指弯曲#大拇指侧摆#食指弯曲#中指弯曲#无名指弯曲#小指弯曲#食指侧摆#无名指侧摆#小指侧摆#拇指旋转
     # pose = [255, 255, 255, 255, 255, 255, 0, 0, 0, 0]
     # linker_hand.finger_move(pose=pose)
-    pose = [186, 142, 135, 129, 135, 255, 107, 26, 0, 113]
-    linker_hand.finger_move(pose=pose)
+    # pose = [186, 142, 135, 129, 135, 255, 107, 26, 0, 113]
+    # linker_hand.finger_move(pose=pose)
 
     # force
-    hand_force = linker_hand.get_torque()
-    print(hand_force)
+    torque = linker_hand.get_torque()
+    print("torque=", torque)
     tem = linker_hand.get_temperature()
-    print(tem)
+    print("tem=",tem)
+    speed = linker_hand.get_speed()
+    print("speed=",speed)
+    joint_speed = linker_hand.get_joint_speed()
+    print("joint_speed=",joint_speed)
+    force = linker_hand.get_force()
+    print("force=",force)
+    touch = linker_hand.get_touch()
+    print ("touch=",touch)
+    touch_type = linker_hand.get_touch_type()
+    print ("touch_type=",touch_type)
+    state = linker_hand.get_state()
+    print ("status=",state)
+
     
 
 if __name__ == "__main__":
