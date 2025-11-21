@@ -274,20 +274,24 @@ def main():
     print(f"Object in camera (OpenCV): {T_cam_obj[:3, 3]}")
     
     # 关键：机器人返回的是 Gripper 位置（工具坐标系），需要转换回 Link6
-    # 工具偏移：Gripper 在 Link6 的 Z 轴正方向 +180mm
-    # 所以 Link6 = Gripper - 180mm * Gripper_Z_axis
+    # 工具坐标系定义：相对于 Link6，只在 Z 轴方向（世界坐标系）偏移 +180mm
+    # 注意：这里的 Z 是 Link6 坐标系的 Z，不是世界坐标系的 Z
     
-    # 计算 Link6 位置：沿着 Gripper 的 Z 轴向下 180mm
-    gripper_z_axis = R_base_tcp[:, 2]  # Gripper 的 Z 轴方向（在 base 坐标系中）
-    tool_offset_vector = -0.18 * gripper_z_axis  # 向下 180mm
+    # 方法：使用变换矩阵正确计算
+    # T_base_gripper 已知，T_link6_gripper = [[I, [0,0,0.18]], [0,0,0,1]]
+    # T_base_link6 = T_base_gripper @ inv(T_link6_gripper)
     
-    p_link6 = np.array([x, y, z]) + tool_offset_vector
-    T_base_link6 = np.eye(4, dtype=np.float64)
-    T_base_link6[:3, :3] = R_base_tcp  # 姿态相同
-    T_base_link6[:3, 3] = p_link6
+    T_link6_gripper = np.eye(4, dtype=np.float64)
+    T_link6_gripper[:3, :3] = np.eye(3)  # 姿态相同
+    T_link6_gripper[:3, 3] = [0, 0, 0.18]  # Link6 坐标系的 Z 方向 +180mm
     
+    T_gripper_link6 = np.linalg.inv(T_link6_gripper)
+    T_base_link6 = T_base_tcp @ T_gripper_link6
+    
+    p_link6 = T_base_link6[:3, 3]
     print(f"Computed Link6 pose in base: X={p_link6[0]:.3f}, Y={p_link6[1]:.3f}, Z={p_link6[2]:.3f}")
-    print(f"Tool offset applied: {tool_offset_vector}")
+    print(f"Tool offset (in Link6 frame): [0, 0, 0.18]")
+    print(f"Tool offset (in base frame): {p_link6 - np.array([x, y, z])}")
     
     # 计算物体在 base 坐标系的位置（OpenCV 坐标系）
     T_base_obj_opencv = T_base_link6 @ T_link6_cam @ T_cam_obj
